@@ -3,9 +3,15 @@ package com.zen.cache;
 
 import com.netflix.hystrix.HystrixCommand;
 import com.netflix.hystrix.HystrixCommandGroupKey;
+import com.netflix.hystrix.strategy.concurrency.HystrixContextRunnable;
 import com.netflix.hystrix.strategy.concurrency.HystrixRequestContext;
 import org.junit.Test;
-import static org.junit.Assert.*;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 
 public class CommandUsingRequestCache extends HystrixCommand<Boolean> {
@@ -67,6 +73,62 @@ public class CommandUsingRequestCache extends HystrixCommand<Boolean> {
                 assertTrue(command3b.execute());
                 // this is a new request context so this should not come from cache
                 assertFalse(command3b.isResponseFromCache());
+            } finally {
+                context.shutdown();
+            }
+        }
+
+
+        @Test
+        public void testWithCacheHitsInExecutor() {
+            HystrixRequestContext context = HystrixRequestContext.initializeContext();
+            try {
+                CommandUsingRequestCache command2a = new CommandUsingRequestCache(2);
+                assertTrue(command2a.execute());
+                assertFalse(command2a.isResponseFromCache());
+
+                ExecutorService executorService = Executors.newSingleThreadExecutor();
+                executorService.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            CommandUsingRequestCache command2b = new CommandUsingRequestCache(2);
+                            assertTrue(command2b.execute());
+                            assertFalse(command2b.isResponseFromCache());
+                        }catch (Throwable e){
+                            e.printStackTrace();
+                        }
+                    }
+                });
+
+            } finally {
+                context.shutdown();
+            }
+        }
+
+
+        @Test
+        public void testWithCacheHitsUseHystrixRunnable() {
+            HystrixRequestContext context = HystrixRequestContext.initializeContext();
+            try {
+                CommandUsingRequestCache command2a = new CommandUsingRequestCache(2);
+                assertTrue(command2a.execute());
+                assertFalse(command2a.isResponseFromCache());
+
+                ExecutorService executorService = Executors.newSingleThreadExecutor();
+                executorService.submit(new HystrixContextRunnable(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            CommandUsingRequestCache command2b = new CommandUsingRequestCache(2);
+                            assertTrue(command2b.execute());
+                            assertTrue(command2b.isResponseFromCache());
+                        }catch (Throwable e){
+                            e.printStackTrace();
+                        }
+                    }
+                }));
+
             } finally {
                 context.shutdown();
             }
